@@ -1,7 +1,7 @@
 import pandas as pd
 import matplotlib.pyplot as plt
 
-df =pd.read_excel('311.xlsx')
+df=pd.read_csv('ExchangeRate@202503251855.csv')
 
 df['sum']=df['x']+df['y']
 
