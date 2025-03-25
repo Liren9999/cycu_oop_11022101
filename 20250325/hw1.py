@@ -1,7 +1,7 @@
 import pandas as pd
 import matplotlib.pyplot as plt
 
-df = pd.read_excel('311.xlsx')
+df =pd.read_excel('311.xlsx')
 
 df['sum']=df['x']+df['y']
 
