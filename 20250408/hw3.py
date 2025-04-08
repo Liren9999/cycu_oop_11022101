@@ -1,73 +1,94 @@
-from playwright.sync_api import sync_playwright
+# -*- coding: utf-8 -*-
+import os
 import csv
-import json
-import time
+from playwright.sync_api import sync_playwright
+from bs4 import BeautifulSoup
 
-def fetch_bus_route_with_playwright(route_id):
-    url = f"https://ebus.gov.taipei/Route/StopsOfRoute?routeid={route_id}"
-    
-    with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True)
-        page = browser.new_page()
-        
-        # 請求目標網址
-        page.goto(url)
-        
-        # 等待特定的元素出現
-        try:
-            page.wait_for_selector("script[type='text/javascript']", timeout=60000)  # 等待 60 秒
-        except Exception as e:
-            print(f"Error waiting for selector: {e}")
-            browser.close()
-            return
-        
-        # 嘗試抓取包含 JSON 資料的 <script> 標籤
-        try:
-            script_tag = page.query_selector("script[type='text/javascript']")
-            if not script_tag:
-                print("Unable to find script tag containing data.")
-                print("Page content:", page.content())  # 打印頁面內容以除錯
-                browser.close()
-                return
+
+class BusRouteInfo:
+    def __init__(self, routeid: str, direction: str = 'go'):
+        self.rid = routeid
+        self.content = None
+        self.url = f'https://ebus.gov.taipei/Route/StopsOfRoute?routeid={routeid}'
+
+        if direction not in ['go', 'come']:
+            raise ValueError("Direction must be 'go' or 'come'")
+
+        self.direction = direction
+
+        self._fetch_content()
+        self._parse_and_save_to_csv()
+
+    def _fetch_content(self):
+        with sync_playwright() as p:
+            browser = p.chromium.launch(headless=True)
+            page = browser.new_page()
+            page.goto(self.url)
             
-            # 解析 JavaScript 變數中的 JSON 資料
-            script_content = script_tag.inner_text()
-            json_data = script_content.split('=')[-1].strip().strip(';')
-            data = json.loads(json_data)
-        except Exception as e:
-            print(f"Error parsing JSON: {e}")
+            if self.direction == 'come':
+                page.click('a.stationlist-come-go-gray.stationlist-come')
+            
+            # 等待站點資訊載入完成
+            page.wait_for_selector('.auto-list-stationlist', timeout=10000)  # 最多等待 10 秒
+            self.content = page.content()
             browser.close()
+
+        # 儲存 HTML 內容到檔案（除錯用）
+        os.makedirs("data", exist_ok=True)  # 確保資料夾存在
+        with open(f"data/ebus_taipei_{self.rid}.html", "w", encoding="utf-8") as file:
+            file.write(self.content)
+
+    def _parse_and_save_to_csv(self):
+        # 使用 BeautifulSoup 解析 HTML
+        soup = BeautifulSoup(self.content, 'html.parser')
+        stops = []
+
+        # 根據提供的 HTML 結構，選擇站點資訊
+        stop_elements = soup.select('.auto-list-stationlist')  # 修改選擇器以符合實際網站結構
+        if not stop_elements:
+            print("無法找到站點資訊，請檢查選擇器或網站結構")
             return
-        
-        # 擷取公車站資料
-        bus_stops = data.get("stops", [])
-        if not bus_stops:
-            print("No bus stops found in the data.")
-            browser.close()
-            return
-        
-        # 準備 CSV 檔案標題欄位
-        csv_filename = f"{route_id}_bus_route.csv"
-        csv_headers = ["arrival_info", "stop_number", "stop_name", "stop_id", "latitude", "longitude"]
-        
+
+        for stop in stop_elements:
+            try:
+                # 提取站點資訊
+                arrival_info = stop.select_one('.auto-list-stationlist-position-time').text.strip()  # 到達時間
+                stop_number = stop.select_one('.auto-list-stationlist-number').text.strip()  # 車站序號
+                stop_name = stop.select_one('.auto-list-stationlist-place').text.strip()  # 車站名稱
+                stop_id = stop.select_one('input[name="item.UniStopId"]')['value']  # 車站編號
+                latitude = stop.select_one('input[name="item.Latitude"]')['value']  # 緯度
+                longitude = stop.select_one('input[name="item.Longitude"]')['value']  # 經度
+
+                stops.append([arrival_info, stop_number, stop_name, stop_id, latitude, longitude])
+            except AttributeError:
+                # 不顯示錯誤訊息，直接跳過
+                continue
+
+        # 確保資料夾存在
+        os.makedirs("data", exist_ok=True)
+
         # 將資料寫入 CSV
-        with open(csv_filename, mode='w', newline='', encoding='utf-8') as file:
-            writer = csv.writer(file)
-            writer.writerow(csv_headers)
-            
-            for stop in bus_stops:
-                row = [
-                    stop.get("arrival_info", ""),
-                    stop.get("stop_number", ""),
-                    stop.get("stop_name", ""),
-                    stop.get("stop_id", ""),
-                    stop.get("latitude", ""),
-                    stop.get("longitude", "")
-                ]
-                writer.writerow(row)
-        
-        print(f"Data has been written to {csv_filename}")
-        browser.close()
+        csv_filename = f"data/bus_route_{self.rid}.csv"
+        with open(csv_filename, "w", newline="", encoding="utf-8") as csvfile:
+            writer = csv.writer(csvfile)
+            writer.writerow(["arrival_info", "stop_number", "stop_name", "stop_id", "latitude", "longitude"])
+            writer.writerows(stops)
 
-# 範例使用
-fetch_bus_route_with_playwright("0100000A00")
+        print(f"資料已儲存至 {csv_filename}")
+
+        # 顯示站點資訊
+        for stop in stops:
+            print(f"到達時間: {stop[0]}, 車站序號: {stop[1]}, 車站名稱: {stop[2]}, 車站編號: {stop[3]}, 緯度: {stop[4]}, 經度: {stop[5]}")
+
+
+if __name__ == "__main__":
+    # 讓使用者輸入公車代碼和方向
+    routeid = input("請輸入公車代碼 (例如: 0100000A00): ").strip()
+    direction = input("請輸入方向 ('go' 或 'come'): ").strip()
+
+    try:
+        route = BusRouteInfo(routeid=routeid, direction=direction)
+    except ValueError as e:
+        print(f"輸入錯誤: {e}")
+    except Exception as e:
+        print(f"發生錯誤: {e}")
