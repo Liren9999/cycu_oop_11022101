@@ -3,8 +3,8 @@ import matplotlib.pyplot as plt
 from scipy.stats import lognorm
 
 # 定義參數
-mu = 1.5  # μ
-sigma = 0.4  # σ
+mu = 0  # μ
+sigma = 1.0  # σ
 
 # 計算對數常態分布的 s 和 scale
 s = sigma
