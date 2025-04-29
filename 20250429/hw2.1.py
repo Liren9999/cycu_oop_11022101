@@ -26,8 +26,11 @@ class BusRouteInfo:
             page = browser.new_page()
             page.goto(self.url)
             
+            # 根據方向選擇去程或返程
             if self.direction == 'come':
-                page.click('a.stationlist-come-go-gray.stationlist-come')
+                page.click('a.stationlist-come')  # 點擊返程按鈕
+            elif self.direction == 'go':
+                page.click('a.stationlist-go')  # 點擊去程按鈕
             
             try:
                 # 等待站點資訊載入完成
@@ -43,7 +46,7 @@ class BusRouteInfo:
 
         # 儲存 HTML 內容到檔案（除錯用）
         os.makedirs("data", exist_ok=True)  # 確保資料夾存在
-        with open(f"data/ebus_taipei_{self.rid}.html", "w", encoding="utf-8") as file:
+        with open(f"data/ebus_taipei_{self.rid}_{self.direction}.html", "w", encoding="utf-8") as file:
             file.write(self.content or "")
 
     def _parse_and_save_to_csv(self):
@@ -61,34 +64,44 @@ class BusRouteInfo:
 
         for stop in stop_elements:
             try:
-                # 提取站點資訊
-                arrival_info = stop.select_one('.auto-list-stationlist-position-time').text.strip()  # 到達時間（例如「1分鐘」、「進站中」）
+                # 提取到站時間
+                arrival_info_element = stop.select_one('.auto-list-stationlist-position-now')  # 提取進站中
+                if arrival_info_element:
+                    arrival_info = arrival_info_element.text.strip()
+                else:
+                    arrival_info_element = stop.select_one('.auto-list-stationlist-position-time')  # 提取數字時間
+                    if arrival_info_element:
+                        arrival_info = arrival_info_element.text.strip()
+                    else:
+                        arrival_info_element = stop.select_one('.auto-list-stationlist-position-none')  # 提取尚未發車
+                        arrival_info = arrival_info_element.text.strip() if arrival_info_element else "尚未發車"
+
                 stop_number = stop.select_one('.auto-list-stationlist-number').text.strip()  # 車站序號
                 stop_name = stop.select_one('.auto-list-stationlist-place').text.strip()  # 車站名稱
                 stop_id = stop.select_one('input[name="item.UniStopId"]')['value']  # 車站編號
                 latitude = stop.select_one('input[name="item.Latitude"]')['value']  # 緯度
                 longitude = stop.select_one('input[name="item.Longitude"]')['value']  # 經度
-                bus_plate = stop.select_one('.bus-plate')  # 修改選擇器以符合車牌號碼的實際結構
-                bus_plate_text = bus_plate.text.strip() if bus_plate else "無車牌"
 
-                stops.append([arrival_info, stop_number, stop_name, stop_id, latitude, longitude, bus_plate_text])
+                stops.append([arrival_info, stop_number, stop_name, stop_id, latitude, longitude])
             except AttributeError:
-                # 不顯示錯誤訊息，直接跳過
+                # 遇到錯誤時，跳過該車站
+                print("無法提取某些資訊，跳過該車站")
                 continue
 
         # 確保資料夾存在
         os.makedirs("data", exist_ok=True)
 
         # 將資料寫入 CSV
-        csv_filename = f"data/bus_route_{self.rid}.csv"
+        csv_filename = f"data/bus_route_{self.rid}_{self.direction}.csv"
         with open(csv_filename, "w", newline="", encoding="utf-8") as csvfile:
             writer = csv.writer(csvfile)
-            writer.writerow(["arrival_info", "stop_number", "stop_name", "stop_id", "latitude", "longitude", "bus_plate"])
+            writer.writerow(["arrival_info", "stop_number", "stop_name", "stop_id", "latitude", "longitude"])
             writer.writerows(stops)
 
         output = [f"資料已儲存至 {csv_filename}"]
         for stop in stops:
-            output.append(f"公車到達時間: {stop[0]}, 車站序號: {stop[1]}, 車站名稱: {stop[2]}, 車站編號: {stop[3]}, 緯度: {stop[4]}, 經度: {stop[5]}, 車牌號碼: {stop[6]}")
+            output.append(f"公車到達時間: {stop[0]}, 車站序號: {stop[1]}, 車站名稱: {stop[2]}, 車站編號: {stop[3]}, 緯度: {stop[4]}, 經度: {stop[5]}")
+
         return "\n".join(output)
 
 
