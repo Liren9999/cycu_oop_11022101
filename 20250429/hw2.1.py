@@ -62,16 +62,16 @@ class BusRouteInfo:
         for stop in stop_elements:
             try:
                 # 提取站點資訊
-                arrival_info = stop.select_one('.auto-list-stationlist-position-time').text.strip()  # 到達時間
+                arrival_info = stop.select_one('.auto-list-stationlist-position-time').text.strip()  # 到達時間（例如「1分鐘」、「進站中」）
                 stop_number = stop.select_one('.auto-list-stationlist-number').text.strip()  # 車站序號
                 stop_name = stop.select_one('.auto-list-stationlist-place').text.strip()  # 車站名稱
                 stop_id = stop.select_one('input[name="item.UniStopId"]')['value']  # 車站編號
                 latitude = stop.select_one('input[name="item.Latitude"]')['value']  # 緯度
                 longitude = stop.select_one('input[name="item.Longitude"]')['value']  # 經度
-                status = stop.select_one('.station-status')  # 提取「進站中」狀態
-                status_text = status.text.strip() if status else "無狀態"
+                bus_plate = stop.select_one('.bus-plate')  # 修改選擇器以符合車牌號碼的實際結構
+                bus_plate_text = bus_plate.text.strip() if bus_plate else "無車牌"
 
-                stops.append([arrival_info, stop_number, stop_name, stop_id, latitude, longitude, status_text])
+                stops.append([arrival_info, stop_number, stop_name, stop_id, latitude, longitude, bus_plate_text])
             except AttributeError:
                 # 不顯示錯誤訊息，直接跳過
                 continue
@@ -83,12 +83,12 @@ class BusRouteInfo:
         csv_filename = f"data/bus_route_{self.rid}.csv"
         with open(csv_filename, "w", newline="", encoding="utf-8") as csvfile:
             writer = csv.writer(csvfile)
-            writer.writerow(["arrival_info", "stop_number", "stop_name", "stop_id", "latitude", "longitude", "status"])
+            writer.writerow(["arrival_info", "stop_number", "stop_name", "stop_id", "latitude", "longitude", "bus_plate"])
             writer.writerows(stops)
 
         output = [f"資料已儲存至 {csv_filename}"]
         for stop in stops:
-            output.append(f"公車到達時間: {stop[0]}, 車站序號: {stop[1]}, 車站名稱: {stop[2]}, 車站編號: {stop[3]}, 緯度: {stop[4]}, 經度: {stop[5]}, 狀態: {stop[6]}")
+            output.append(f"公車到達時間: {stop[0]}, 車站序號: {stop[1]}, 車站名稱: {stop[2]}, 車站編號: {stop[3]}, 緯度: {stop[4]}, 經度: {stop[5]}, 車牌號碼: {stop[6]}")
         return "\n".join(output)
 
 
