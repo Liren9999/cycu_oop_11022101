@@ -84,10 +84,10 @@ class BusRouteInfo:
                 continue
 
         # 確保資料夾存在
-        os.makedirs("data", exist_ok=True)
+        os.makedirs("data/BUS_INFO", exist_ok=True)
 
         # 將資料寫入 CSV
-        csv_filename = f"data/bus_route_{self.rid}_{self.direction}.csv"
+        csv_filename = f"data/BUS_INFO/bus_route_{self.rid}_{self.direction}.csv"
         with open(csv_filename, "w", newline="", encoding="utf-8") as csvfile:
             writer = csv.writer(csvfile)
             writer.writerow(["arrival_info", "stop_number", "stop_name", "stop_id", "latitude", "longitude"])
@@ -99,23 +99,40 @@ class BusRouteInfo:
         return "\n".join(output)
 
 
-def bus_info(routeid: str, direction: str = 'go') -> str:
+def fetch_all_routes():
     """
-    呼叫 BusRouteInfo 類別並返回其輸出內容。
+    從網站中抓取所有公車代碼，並依序讀取每個公車代碼的車站資料。
     """
-    try:
-        route = BusRouteInfo(routeid=routeid, direction=direction)
-        return route.output
-    except ValueError as e:
-        return f"輸入錯誤: {e}"
-    except Exception as e:
-        return f"發生錯誤: {e}"
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=True)
+        page = browser.new_page()
+        page.goto("https://ebus.gov.taipei/ebus")
+
+        try:
+            # 等待公車代碼載入完成
+            page.wait_for_selector('a[href^="javascript:go"]', timeout=10000)
+            time.sleep(5)  # 等待 5 秒以確保載入完成
+
+            # 抓取所有公車代碼
+            soup = BeautifulSoup(page.content(), 'html.parser')
+            route_links = soup.select('a[href^="javascript:go"]')
+            route_ids = [link['href'].split("'")[1] for link in route_links]
+        except Exception as e:
+            print(f"抓取公車代碼時發生錯誤: {e}")
+            route_ids = []
+        finally:
+            browser.close()
+
+    # 依序讀取每個公車代碼的車站資料
+    for routeid in route_ids:
+        for direction in ['go', 'come']:
+            try:
+                print(f"正在處理公車代碼: {routeid}, 方向: {direction}")
+                bus_route = BusRouteInfo(routeid, direction)  # 使用 BusRouteInfo 類別
+                print(bus_route.output)
+            except Exception as e:
+                print(f"處理公車代碼 {routeid} 時發生錯誤: {e}")
 
 
 if __name__ == "__main__":
-    # 讓使用者輸入公車代碼和方向
-    routeid = input("請輸入公車代碼 (例如: 0100000A00): ").strip()
-    direction = input("請輸入方向 ('go' 或 'come'): ").strip()
-
-    output = bus_info(routeid, direction)
-    print(output)
+    fetch_all_routes()
